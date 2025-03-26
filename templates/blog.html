@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>وبلاگ من</title>
+    <style>
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .post {
+            border: 1px solid #ddd;
+            margin: 10px 0;
+            padding: 15px;
+            border-radius: 5px;
+        }
+        .new-post-form {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .new-post-form input, .new-post-form textarea {
+            width: 100%;
+            margin: 10px 0;
+            padding: 8px;
+        }
+        .new-post-form textarea {
+            height: 150px;
+        }
+        .new-post-form button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .new-post-form button:hover {
+            background-color: #45a049;
+        }
+        .error-message {
+            color: red;
+            margin: 10px 0;
+            display: none;
+        }
+        .btn-danger {
+            background-color: #dc3545;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-bottom: 20px;
+        }
+        .btn-danger:hover {
+            background-color: #c82333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>وبلاگ من</h1>
+        <button onclick="logout()" class="btn-danger">خروج از حساب کاربری</button>
+        
+        <div class="new-post-form">
+            <h2>پست جدید</h2>
+            <div id="error-message" class="error-message"></div>
+            <input type="text" id="post-title" placeholder="عنوان پست">
+            <textarea id="post-content" placeholder="محتوی پست"></textarea>
+            <button onclick="createPost()">انتشار پست</button>
+        </div>
+
+        <div id="posts"></div>
+
+<!--        <div id="token-info" class="token-info" style="background-color: #f8f9fa; padding: 10px; margin-bottom: 20px; border-radius: 5px;">-->
+<!--            <h3>اطلاعات توکن</h3>-->
+<!--            <p>توکن دسترسی تا: </p>-->
+<!--            <p>توکن رفرش تا: </p>-->
+<!--        </div>-->
+    </div>
+
+    <script>
+        let accessToken = localStorage.getItem('accessToken') || '';
+        let refreshToken = localStorage.getItem('refreshToken') || '';
+        let accessExpires = localStorage.getItem('accessExpires') || '';
+        let refreshExpires = localStorage.getItem('refreshExpires') || '';
+
+        function formatExpirationTime(expiresAt) {
+            if (!expiresAt) return '';
+            const date = new Date(expiresAt);
+            return date.toLocaleString('fa-IR');
+        }
+
+        // function updateTokenInfo() {
+        //     const tokenInfo = document.getElementById('token-info');
+        //     if (tokenInfo) {
+        //         tokenInfo.innerHTML = `
+        //             <p>توکن دسترسی تا: ${formatExpirationTime(accessExpires)}</p>
+        //             <p>توکن رفرش تا: ${formatExpirationTime(refreshExpires)}</p>
+        //         `;
+        //     }
+        // }
+
+        async function checkAndRefreshToken() {
+            if (!accessToken || !refreshToken) return false;
+
+
+            if (new Date(refreshExpires) < new Date()) {
+                window.location.href = '/';
+                return false;
+            }
+
+            try {
+                const response = await fetch('/api/token/refresh/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        refresh: refreshToken
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    accessToken = data.access;
+                    accessExpires = data.access_expires;
+                    localStorage.setItem('accessToken', accessToken);
+                    localStorage.setItem('accessExpires', accessExpires);
+                    // updateTokenInfo();
+                    return true;
+                }
+                return false;
+            } catch (error) {
+                console.error('Error refreshing token:', error);
+                return false;
+            }
+        }
+
+        async function createPost() {
+            const title = document.getElementById('post-title').value;
+            const content = document.getElementById('post-content').value;
+            const errorMessage = document.getElementById('error-message');
+
+            if (!title || !content) {
+                errorMessage.textContent = 'لطفاً عنوان و محتوای پست را وارد کنید';
+                errorMessage.style.display = 'block';
+                return;
+            }
+
+            try {
+                await checkAndRefreshToken();
+
+                const response = await fetch('/api/posts/', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        title: title,
+                        content: content
+                    })
+                });
+
+                if (response.ok) {
+                    document.getElementById('post-title').value = '';
+                    document.getElementById('post-content').value = '';
+                    errorMessage.style.display = 'none';
+                    loadPosts();
+                } else if (response.status === 401) {
+                    window.location.href = '/';
+                } else {
+                    console.error('Server error:', await response.json());
+                    errorMessage.textContent = 'خطا در ایجاد پست';
+                    errorMessage.style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Network error:', error);
+                errorMessage.textContent = 'خطا در ارتباط با سرور';
+                errorMessage.style.display = 'block';
+            }
+        }
+
+        async function loadPosts() {
+            try {
+                await checkAndRefreshToken();
+
+                const response = await fetch('/api/posts/', {
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`
+                    }
+                });
+                
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        window.location.href = '/';
+                        return;
+                    }
+                    throw new Error('خطا در دریافت پست‌ها');
+                }
+                
+                const posts = await response.json();
+                const postsDiv = document.getElementById('posts');
+                postsDiv.innerHTML = posts.map(post => `
+                    <div class="post">
+                        <h2>${post.title}</h2>
+                        <p>${post.content}</p>
+                        <small>نوشته شده در: ${new Date(post.created_at).toLocaleString('fa-IR')}</small>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error loading posts:', error);
+                document.getElementById('posts').innerHTML = '<p style="color: red;">خطا در دریافت پست‌ها</p>';
+            }
+        }
+
+        async function logout() {
+            localStorage.removeItem('accessToken');
+            localStorage.removeItem('refreshToken');
+            accessToken = '';
+            refreshToken = '';
+            window.location.href = '/';
+        }
+
+        window.onload = async function() {
+            if (!accessToken || !refreshToken) {
+                window.location.href = '/';
+                return;
+            }
+
+            try {
+                await checkAndRefreshToken();
+
+                const response = await fetch('/api/posts/', {
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`
+                    }
+                });
+                
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        window.location.href = '/';
+                        return;
+                    }
+                    throw new Error('خطا در دریافت پست‌ها');
+                }
+                
+                loadPosts();
+            } catch (error) {
+                console.error('Error checking token:', error);
+                window.location.href = '/';
+            }
+        };
+
+        // setInterval(updateTokenInfo, 20);
+        // updateTokenInfo();
+    </script>
+</body>
+</html> 

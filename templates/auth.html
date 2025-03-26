@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ورود و ثبت نام</title>
+    <style>
+        .auth-container {
+            max-width: 400px;
+            margin: 50px auto;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .auth-container input {
+            width: 100%;
+            margin: 10px 0;
+            padding: 8px;
+        }
+        .auth-container button {
+            width: 100%;
+            padding: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        .auth-container button:hover {
+            background-color: #45a049;
+        }
+        .error-message {
+            color: red;
+            margin: 10px 0;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="auth">
+        <div id="register" class="auth-container">
+            <h2>ثبت نام</h2>
+            <input type="text" id="username" placeholder="نام کاربری">
+            <input type="email" id="email" placeholder="ایمیل">
+            <input type="password" id="password" placeholder="رمز عبور">
+            <button onclick="register()">ثبت نام</button>
+        </div>
+
+        <div id="login" class="auth-container">
+            <h2>ورود</h2>
+            <input type="text" id="login-username" placeholder="نام کاربری">
+            <input type="password" id="login-password" placeholder="رمز عبور">
+            <button onclick="login()">ورود</button>
+        </div>
+    </div>
+
+    <script>
+        let accessToken = localStorage.getItem('accessToken') || '';
+        let refreshToken = localStorage.getItem('refreshToken') || '';
+
+        async function register() {
+            const response = await fetch('/api/register/', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    username: document.getElementById('username').value,
+                    email: document.getElementById('email').value,
+                    password: document.getElementById('password').value
+                })
+            });
+            if (response.ok){ 
+                alert("ثبت نام موفق!");
+                const response = await fetch('/api/login/', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        username: document.getElementById('username').value,
+                        password: document.getElementById('password').value
+                    })
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    accessToken = data.access;
+                    refreshToken = data.refresh;
+                    localStorage.setItem('accessToken', accessToken);
+                    localStorage.setItem('refreshToken', refreshToken);
+                    window.location.href = '/blog/';
+                } else {
+                    alert('خطا در ورود: ' + (data.detail || 'نام کاربری یا رمز عبور اشتباه است'));
+                }
+            }else{
+                alert("خطا در ثبت نام: " + (data.detail || 'نام کاربری قبلاً استفاده شده است'));
+            }
+        }
+
+        async function login() {
+            const response = await fetch('/api/login/', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    username: document.getElementById('login-username').value,
+                    password: document.getElementById('login-password').value
+                })
+            });
+            const data = await response.json();
+            if (response.ok) {
+                accessToken = data.access;
+                refreshToken = data.refresh;
+                localStorage.setItem('accessToken', accessToken);
+                localStorage.setItem('refreshToken', refreshToken);
+                localStorage.setItem('accessExpires', data.access_expires);
+                localStorage.setItem('refreshExpires', data.refresh_expires);
+                window.location.href = '/blog/';
+            } else {
+                alert('خطا در ورود: ' + (data.detail || 'نام کاربری یا رمز عبور اشتباه است'));
+            }
+        }
+
+        window.onload = async function() {
+            if (accessToken && new Date(access_expires) > new Date) {
+                try {
+                    const response = await fetch('/api/posts/', {
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`
+                        }
+                    });
+                    if (response.ok) {
+                        window.location.href = '/blog/';
+                    } else {
+                        localStorage.removeItem('accessToken');
+                        localStorage.removeItem('refreshToken');
+                        accessToken = '';
+                        refreshToken = '';
+                    }
+                } catch (error) {
+                    console.error('Error checking token:', error);
+                }
+            }
+        };
+    </script>
+</body>
+</html> 
